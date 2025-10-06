@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google 文件圖片網址提取器 (普普風版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Noto+Sans+TC:wght=400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
+    <style>
+        body { font-family: 'Noto Sans TC', sans-serif; background-color: #fef3c7; }
+        .font-pop { font-family: 'Bangers', cursive; letter-spacing: 0.05em; }
+        .pop-shadow { box-shadow: 8px 8px 0px rgba(0,0,0,1); }
+        .pop-shadow-sm { box-shadow: 4px 4px 0px rgba(0,0,0,1); }
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #06b6d4; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        #slideshow-modal { background-color: rgba(0,0,0,0.85); backdrop-filter: blur(8px); }
+        .gallery-main { height: 88%; width: 100%; }
+        .gallery-main .swiper-slide { display: flex; justify-content: center; align-items: center; }
+        .gallery-main .swiper-slide img { max-width: 95%; max-height: 95%; width: auto; height: auto; object-fit: contain; background-color: white; border: 10px solid white; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .gallery-thumbs { height: 12%; box-sizing: border-box; padding: 10px 0; }
+        .gallery-thumbs .swiper-slide { width: 25%; height: 100%; opacity: 0.4; transition: opacity 0.3s; }
+        .gallery-thumbs .swiper-slide:hover { opacity: 0.7; }
+        .gallery-thumbs .swiper-slide-thumb-active { opacity: 1; }
+        .gallery-thumbs .swiper-slide img { width: 100%; height: 100%; object-fit: cover; border: 3px solid #fde047; }
+        
+        .swiper-button-next, .swiper-button-prev { font-family: 'Bangers', cursive; color: black !important; background-color: #fde047; width: 60px !important; height: 60px !important; border-radius: 50%; border: 4px solid black; box-shadow: 4px 4px 0px rgba(0,0,0,1); transition: all 0.15s ease-in-out; }
+        .swiper-button-next:active, .swiper-button-prev:active { transform: translateY(2px) translateX(2px); box-shadow: none; }
+        .swiper-button-next:after, .swiper-button-prev:after { font-size: 2rem !important; }
+
+        /* --- 新增：設定面板樣式 --- */
+        #settings-panel {
+            position: absolute;
+            bottom: 15%;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #f87171; /* red-400 */
+            padding: 1rem;
+            border-radius: 0.75rem;
+            border: 4px solid black;
+            z-index: 20;
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+        #settings-panel label { font-weight: 700; color: white; text-shadow: 1px 1px 0 #000; }
+        #settings-panel select {
+            border: 2px solid black;
+            border-radius: 0.5rem;
+            padding: 0.25rem 0.5rem;
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body class="text-black">
+
+    <div class="container mx-auto p-4 sm:p-6 md:p-8 max-w-4xl">
+        <header class="text-center mb-12">
+            <h1 class="text-6xl sm:text-6xl font-bold text-yellow-300" style="text-shadow: 3px 3px 0px #ef4444, 6px 6px 0px #000;">Google 文件圖片網址提取器!</h1>
+            <p class="mt-2 text-lg font-bold">貼上 Google 文件網址，剩下的交給我！</p>
+        </header>
+        <div class="bg-pink-400 p-6 border-4 border-black rounded-xl pop-shadow mb-12">
+            <div class="flex flex-col sm:flex-row gap-4">
+                <input type="url" id="gdoc-url" placeholder="https://docs.google.com/document/d/e/.../pub" class="flex-grow p-3 border-2 border-black rounded-lg text-lg focus:ring-4 focus:ring-yellow-300 focus:border-black transition duration-150 ease-in-out" required>
+                <button onclick="extractImages()" class="font-pop text-2xl bg-red-500 text-white px-8 py-3 rounded-lg border-2 border-black hover:bg-red-600 active:translate-y-1 active:translate-x-1 active:shadow-none transition-all duration-150 pop-shadow-sm">抓!</button>
+            </div>
+        </div>
+        <div id="status" class="text-center my-6 font-bold"></div>
+        <div id="results" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-10"></div>
+    </div>
+
+    <div id="slideshow-modal" class="fixed inset-0 z-50 flex-col items-center justify-center" style="display: none;">
+        <div class="swiper gallery-main">
+            <div class="swiper-wrapper" id="main-swiper-wrapper"></div>
+            <div class="swiper-button-prev"></div>
+            <div class="swiper-button-next"></div>
+        </div>
+        <div class="swiper gallery-thumbs">
+            <div class="swiper-wrapper" id="thumbs-swiper-wrapper"></div>
+        </div>
+        <button onclick="closeSlideshow()" class="font-pop absolute top-5 right-5 z-50 bg-red-500 text-white text-3xl w-14 h-14 rounded-full border-4 border-black hover:bg-red-600 active:translate-y-1 active:translate-x-1 active:shadow-none transition-all duration-150 pop-shadow-sm">X</button>
+        <button onclick="generateAndDownloadHtml()" class="font-pop absolute top-5 left-5 z-50 bg-purple-500 text-white text-xl px-4 py-3 rounded-lg border-4 border-black hover:bg-purple-600 active:translate-y-1 active:translate-x-1 active:shadow-none transition-all duration-150 pop-shadow-sm">下載相簿 HTML</button>
+
+        <div id="settings-panel" class="pop-shadow-sm">
+            <label for="effect-select">效果:</label>
+            <select id="effect-select" onchange="applyAlbumSettings()">
+                <option value="fade">淡入淡出</option>
+                <option value="slide">滑動</option>
+                <option value="cube">方塊</option>
+                <option value="coverflow">卡片</option>
+                <option value="flip">翻轉</option>
+            </select>
+            <label for="delay-select">秒數:</label>
+            <select id="delay-select" onchange="applyAlbumSettings()">
+                <option value="3000">3秒</option>
+                <option value="2000">2秒</option>
+                <option value="5000">5秒</option>
+                <option value="8000">8秒</option>
+            </select>
+        </div>
+    </div>
+
+    <footer class="text-center p-6 mt-12">
+        <p class="font-bold">Made by <a href="#" target="_blank" rel="noopener noreferrer" class="text-blue-600 underline hover:text-pink-500">阿剛老師</a></p>
+    </footer>
+    
+    <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+
+    <script>
+        // DOM Elements
+        const urlInput = document.getElementById('gdoc-url');
+        const resultsContainer = document.getElementById('results');
+        const statusDiv = document.getElementById('status');
+        const slideshowModal = document.getElementById('slideshow-modal');
+        const mainSwiperWrapper = document.getElementById('main-swiper-wrapper');
+        const thumbsSwiperWrapper = document.getElementById('thumbs-swiper-wrapper');
+        const effectSelect = document.getElementById('effect-select');
+        const delaySelect = document.getElementById('delay-select');
+        
+        let extractedImageUrls = [];
+        let mainSwiper = null;
+        let thumbsSwiper = null;
+
+        urlInput.addEventListener('keypress', (event) => (event.key === 'Enter') && (event.preventDefault(), extractImages()));
+        document.addEventListener('keydown', (event) => (event.key === 'Escape') && closeSlideshow());
+
+        async function extractImages() {
+            const url = urlInput.value.trim();
+            if (!url) return showStatus('網址欄...是空的喔！', 'error');
+
+            resultsContainer.innerHTML = '';
+            extractedImageUrls = [];
+            showStatus('<div class="loader mx-auto"></div><p class="mt-2 font-pop text-2xl">尋找中...</p>', 'loading');
+
+            const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
+            try {
+                const response = await fetch(proxyUrl);
+                if (!response.ok) throw new Error(`網路錯誤: ${response.status} ${response.statusText}`);
+                const htmlText = await response.text();
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(htmlText, 'text/html');
+                const images = doc.querySelectorAll('img');
+
+                if (images.length === 0) return showStatus('這個網址裡...一張圖都沒有耶。', 'info');
+
+                statusDiv.innerHTML = '';
+                images.forEach(img => {
+                    if (img.src && img.src.includes('googleusercontent.com')) {
+                        extractedImageUrls.push(img.src);
+                        createImageCard(img.src, extractedImageUrls.length - 1);
+                    }
+                });
+                
+                if (extractedImageUrls.length === 0) {
+                     showStatus('嗯...找不到 Google 文件的圖片喔。', 'info');
+                } else {
+                    showStatus(`讚啦！找到 ${extractedImageUrls.length} 張圖片！`, 'success');
+                }
+            } catch (error) {
+                console.error('提取過程中發生錯誤:', error);
+                showStatus(`抓取失敗！<br><small class="font-normal">請檢查網址是否正確，且已「發佈到網路」。</small>`, 'error');
+            }
+        }
+        
+        function createImageCard(src, index) {
+            const card = document.createElement('div');
+            card.className = 'bg-white rounded-lg border-4 border-black pop-shadow overflow-hidden transform hover:-translate-y-2 transition-transform duration-200 cursor-pointer';
+            card.onclick = () => openSlideshow(index);
+            const thumbnail = document.createElement('img');
+            thumbnail.src = src;
+            thumbnail.alt = '提取的圖片';
+            thumbnail.className = 'w-full h-40 object-contain bg-gray-100 p-2 border-b-4 border-black';
+            thumbnail.loading = 'lazy';
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'p-3 bg-cyan-300';
+            infoDiv.onclick = (e) => e.stopPropagation();
+            const urlInput = document.createElement('input');
+            urlInput.type = 'text';
+            urlInput.value = src;
+            urlInput.readOnly = true;
+            urlInput.className = 'w-full p-2 mb-2 text-xs border-2 border-black rounded bg-white';
+            const copyButton = document.createElement('button');
+            copyButton.textContent = '複製網址';
+            copyButton.className = 'w-full bg-yellow-300 text-black font-bold px-3 py-2 text-sm rounded border-2 border-black hover:bg-yellow-400 active:bg-yellow-500 transition';
+            copyButton.onclick = (e) => copyToClipboard(e.target, urlInput);
+            infoDiv.appendChild(urlInput);
+            infoDiv.appendChild(copyButton);
+            card.appendChild(thumbnail);
+            card.appendChild(infoDiv);
+            resultsContainer.appendChild(card);
+        }
+        
+        function buildAndReinitSwiper(initialSlide = 0) {
+            if (mainSwiper) mainSwiper.destroy(true, true);
+            if (thumbsSwiper) thumbsSwiper.destroy(true, true);
+
+            mainSwiperWrapper.innerHTML = '';
+            thumbsSwiperWrapper.innerHTML = '';
+
+            extractedImageUrls.forEach(url => {
+                const slideContent = `<img src="${url}" loading="lazy">`;
+                mainSwiperWrapper.innerHTML += `<div class="swiper-slide">${slideContent}</div>`;
+                thumbsSwiperWrapper.innerHTML += `<div class="swiper-slide">${slideContent}</div>`;
+            });
+            
+            thumbsSwiper = new Swiper('.gallery-thumbs', {
+                spaceBetween: 10, slidesPerView: 'auto', freeMode: true, watchSlidesProgress: true,
+            });
+            
+            const effect = effectSelect.value;
+            const delay = parseInt(delaySelect.value, 10);
+            
+            const mainSwiperOptions = {
+                initialSlide: initialSlide,
+                spaceBetween: 10,
+                navigation: { nextEl: '.swiper-button-next', prevEl: '.swiper-button-prev' },
+                thumbs: { swiper: thumbsSwiper },
+                keyboard: { enabled: true },
+                effect: effect,
+                autoplay: { delay: delay, disableOnInteraction: true },
+                grabCursor: true,
+                cubeEffect: { shadow: true, slideShadows: true, shadowOffset: 20, shadowScale: 0.94 },
+                coverflowEffect: { rotate: 50, stretch: 0, depth: 100, modifier: 1, slideShadows: true },
+            };
+            
+            mainSwiper = new Swiper('.gallery-main', mainSwiperOptions);
+        }
+
+        function applyAlbumSettings() {
+            const currentSlideIndex = mainSwiper ? mainSwiper.realIndex : 0;
+            buildAndReinitSwiper(currentSlideIndex);
+            if (mainSwiper) {
+                 mainSwiper.autoplay.start();
+            }
+        }
+        
+        function openSlideshow(index) {
+            slideshowModal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+            buildAndReinitSwiper(index);
+            mainSwiper.autoplay.start();
+        }
+        
+        function closeSlideshow() {
+            slideshowModal.style.display = 'none';
+            document.body.style.overflow = 'auto';
+            if (mainSwiper) mainSwiper.autoplay.stop();
+        }
+        
+        function copyToClipboard(button, input) {
+            button.disabled = true;
+            navigator.clipboard.writeText(input.value).then(() => {
+                button.textContent = '複製成功!';
+                button.classList.add('bg-green-400', 'text-white');
+                setTimeout(() => {
+                    button.textContent = '複製網址';
+                    button.classList.remove('bg-green-400', 'text-white');
+                    button.disabled = false;
+                }, 2000);
+            });
+        }
+
+        function showStatus(message, type) {
+            let styleClass = '';
+            switch (type) {
+                case 'error': styleClass = 'text-white bg-red-500 border-black'; break;
+                case 'success': styleClass = 'text-black bg-green-400 border-black'; break;
+                case 'info': styleClass = 'text-black bg-blue-300 border-black'; break;
+                case 'loading': return statusDiv.innerHTML = message;
+            }
+            statusDiv.innerHTML = `<div class="p-4 rounded-lg border-4 pop-shadow-sm ${styleClass}">${message}</div>`;
+        }
+        
+        function generateAndDownloadHtml() {
+            const slidesHtml = extractedImageUrls.map(url => `<div class="swiper-slide"><img src="${url}" /></div>`).join('');
+
+            const fileContent = `
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的相簿</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
+    <style>
+        body { margin: 0; background-color: #1a1a1a; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        .swiper-button-next, .swiper-button-prev { color: #fff; }
+        .gallery-main { height: 88%; width: 100%; }
+        .gallery-main .swiper-slide { display: flex; justify-content: center; align-items: center; }
+        .gallery-main .swiper-slide img { max-width: 95%; max-height: 95%; object-fit: contain; background-color: white; border: 10px solid white; box-shadow: 0 5px 20px rgba(0,0,0,0.3); }
+        .gallery-thumbs { height: 12%; box-sizing: border-box; padding: 10px 0; }
+        .gallery-thumbs .swiper-slide { width: 25%; height: 100%; opacity: 0.4; transition: opacity 0.3s; cursor: pointer; }
+        .gallery-thumbs .swiper-slide:hover { opacity: 0.7; }
+        .gallery-thumbs .swiper-slide-thumb-active { opacity: 1; }
+        .gallery-thumbs .swiper-slide img { width: 100%; height: 100%; object-fit: cover; border: 3px solid #ddd; }
+        #settings-panel { position: absolute; bottom: 15%; left: 50%; transform: translateX(-50%); background-color: rgba(0,0,0,0.5); backdrop-filter: blur(5px); padding: 1rem; border-radius: 0.75rem; border: 2px solid #fff; z-index: 20; display: flex; gap: 1rem; align-items: center; }
+        #settings-panel label { font-weight: bold; color: white; }
+        #settings-panel select { border: 1px solid #ccc; border-radius: 4px; padding: 4px 8px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="swiper gallery-main">
+        <div class="swiper-wrapper">${slidesHtml}</div>
+        <div class="swiper-button-next"></div>
+        <div class="swiper-button-prev"></div>
+    </div>
+    <div class="swiper gallery-thumbs">
+        <div class="swiper-wrapper">${slidesHtml}</div>
+    </div>
+    <div id="settings-panel">
+        <label for="effect-select">效果:</label>
+        <select id="effect-select" onchange="applySettings()">
+            <option value="fade">淡入淡出</option><option value="slide">滑動</option><option value="cube">方塊</option><option value="coverflow">卡片</option><option value="flip">翻轉</option>
+        </select>
+        <label for="delay-select">秒數:</label>
+        <select id="delay-select" onchange="applySettings()">
+            <option value="3000">3秒</option><option value="2000">2秒</option><option value="5000">5秒</option><option value="8000">8秒</option>
+        </select>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"><\/script>
+    <script>
+        let mainSwiper, thumbsSwiper;
+        const effectSelect = document.getElementById('effect-select');
+        const delaySelect = document.getElementById('delay-select');
+
+        function initSwipers(initialSlide = 0) {
+            if (mainSwiper) mainSwiper.destroy(true, true);
+            if (thumbsSwiper) thumbsSwiper.destroy(true, true);
+
+            thumbsSwiper = new Swiper('.gallery-thumbs', { spaceBetween: 10, slidesPerView: 'auto', freeMode: true, watchSlidesProgress: true });
+            
+            const effect = effectSelect.value;
+            const delay = parseInt(delaySelect.value, 10);
+            
+            const options = {
+                initialSlide, spaceBetween: 10, navigation: { nextEl: '.swiper-button-next', prevEl: '.swiper-button-prev' },
+                thumbs: { swiper: thumbsSwiper }, keyboard: true, effect: effect,
+                autoplay: { delay: delay, disableOnInteraction: true },
+                grabCursor: true, cubeEffect: { shadow: true, slideShadows: true, shadowOffset: 20, shadowScale: 0.94 },
+                coverflowEffect: { rotate: 50, stretch: 0, depth: 100, modifier: 1, slideShadows: true },
+            };
+            mainSwiper = new Swiper('.gallery-main', options);
+            mainSwiper.autoplay.start();
+        }
+        function applySettings() {
+            const currentIndex = mainSwiper ? mainSwiper.realIndex : 0;
+            initSwipers(currentIndex);
+        }
+        initSwipers(); // Initial load
+    <\/script>
+</body>
+</html>`;
+
+            const blob = new Blob([fileContent], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'my-album.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
